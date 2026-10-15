@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.log
+*.tmp
+.meter.lock
+meter_config.json
+meter_state.json
+backup-before-titlebar/
+preview.png
+dist/
+.env
+.env.*
