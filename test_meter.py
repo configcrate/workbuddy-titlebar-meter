@@ -49,6 +49,12 @@ class DiscoveryTests(unittest.TestCase):
     def test_actual_app(self):
         self.assertTrue(self.candidate())
 
+    def test_international_app_and_region(self):
+        self.assertTrue(self.candidate(path=r"E:\Programs\WorkBuddyAI\WorkBuddyAI.exe"))
+        self.assertEqual(core.variant_for_path("E:/WorkBuddyAI/WORKBUDDYAI.EXE"), "ai")
+        self.assertEqual(core.variant_for_path("D:/WorkBuddy/WorkBuddy.exe"), "cn")
+        self.assertIsNone(core.variant_for_path("E:/WorkBuddyAI/fake.exe"))
+
     def test_browser_mentioning_workbuddy_is_not_app(self):
         self.assertFalse(self.candidate(path=r"C:\Chrome\chrome.exe"))
         self.assertFalse(self.candidate(path=r"C:\WorkBuddyFake.exe"))
@@ -63,6 +69,13 @@ class DiscoveryTests(unittest.TestCase):
 
 
 class DataTests(unittest.TestCase):
+    def test_region_cache_must_be_tagged_and_match(self):
+        for region in ("cn", "ai"):
+            self.assertIsNotNone(core.normalize_snapshot(snapshot(variant=region), region))
+            self.assertIsNone(core.normalize_snapshot(snapshot(), region))
+            other = "ai" if region == "cn" else "cn"
+            self.assertIsNone(core.normalize_snapshot(snapshot(variant=other), region))
+
     def test_cache_removes_private_fields(self):
         data = snapshot(uid="private", nickname="private", tokenExpiresAt=123, accessToken="private")
         self.assertEqual(set(data), {"ok", "remain", "total", "percent", "updatedAt", "plan"})
@@ -198,6 +211,65 @@ class LifecycleTests(unittest.TestCase):
             app.save_json(path, {"value": 2})
             self.assertEqual(app.load_json(path), {"value": 2})
             self.assertFalse(os.path.exists(path + ".tmp"))
+
+    def test_region_switch_uses_only_matching_cache(self):
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(app, "STATE_PATH", os.path.join(folder, "state.json")), \
+                patch.object(native, "host_is_active", return_value=False):
+            meter = self.fake_meter(self.host())
+            meter.data = snapshot(variant="cn", remain=900)
+            meter.busy = True
+            app.save_json(app.state_path("ai"), snapshot(variant="ai", remain=42))
+            meter.finder.find = lambda _: self.host(hwnd=222, path="E:/WorkBuddyAI/WorkBuddyAI.exe")
+            meter.tick()
+            self.assertEqual(meter.data["variant"], "ai")
+            self.assertEqual(meter.data["remain"], 42)
+            self.assertFalse(meter.busy)
+            # An old request must not clear the busy flag of a newer request.
+            meter.busy = True
+            meter.results.put((0, snapshot(variant="cn", remain=800), ""))
+            meter.tick()
+            self.assertTrue(meter.busy)
+            self.assertEqual(meter.data["remain"], 42)
+
+    def test_legacy_or_wrong_region_cache_is_not_shown(self):
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(app, "STATE_PATH", os.path.join(folder, "state.json")), \
+                patch.object(native, "host_is_active", return_value=False):
+            app.save_json(app.STATE_PATH, snapshot(remain=999))
+            for cached in (snapshot(), snapshot(variant="cn")):
+                app.save_json(app.state_path("ai"), cached)
+                meter = self.fake_meter()
+                meter.finder.find = lambda _: self.host(path="E:/WorkBuddyAI/WorkBuddyAI.exe")
+                meter.tick()
+                self.assertIsNone(meter.data)
+
+    def test_wrong_region_response_is_rejected_and_never_cached(self):
+        meter = self.fake_meter(self.host(path="E:/WorkBuddyAI/WorkBuddyAI.exe"))
+        meter.data = None
+        meter.results.put((0, snapshot(variant="cn"), ""))
+        with patch.object(app, "save_json") as save, patch.object(native, "host_is_active", return_value=False):
+            meter.tick()
+        save.assert_not_called()
+        self.assertIsNone(meter.data)
+        self.assertEqual(meter.phase, "error")
+
+    def test_refresh_forces_host_region_not_old_config(self):
+        for region, path in (("cn", "C:/WorkBuddy/WorkBuddy.exe"), ("ai", "E:/WorkBuddyAI/WorkBuddyAI.exe")):
+            meter = self.fake_meter(self.host(path=path))
+            meter.cfg["variant"] = "ai" if region == "cn" else "cn"
+            meter.fetch = Mock()
+            with patch.object(app.threading, "Thread") as thread:
+                app.Meter.refresh_now(meter)
+            self.assertEqual(thread.call_args.kwargs["args"], (0, path, region))
+
+    def test_valid_response_saves_only_its_region(self):
+        meter = self.fake_meter(self.host(path="E:/WorkBuddyAI/WorkBuddyAI.exe"))
+        meter.results.put((0, snapshot(variant="ai"), ""))
+        with patch.object(app, "save_json") as save, patch.object(native, "host_is_active", return_value=False):
+            meter.tick()
+        self.assertEqual(meter.data["variant"], "ai")
+        self.assertEqual(save.call_args.args[0], app.state_path("ai"))
 
 
 if __name__ == "__main__":

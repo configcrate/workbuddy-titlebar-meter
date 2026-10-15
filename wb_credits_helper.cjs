@@ -55,11 +55,26 @@ function readVariantArg() {
   return v === 'cn' || v === 'ai' ? v : 'auto';
 }
 
-// 自动识别档位：优先国内版，其次国际版
+// 登录态根目录；自动路由优先匹配当前客户端运行时，再检查已安装版本。
+function authRoot() {
+  const base = process.platform === 'darwin'
+    ? path.join(os.homedir(), 'Library', 'Application Support')
+    : (process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'));
+  return path.join(base, 'CodeBuddyExtension', 'Data', 'Public', 'auth');
+}
+
 function resolveVariant(variant) {
   if (variant !== 'auto') return variant;
-  const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-  const root = path.join(base, 'CodeBuddyExtension', 'Data', 'Public', 'auth');
+  const exe = process.execPath.replace(/\\/g, '/').split('/').pop().toLowerCase();
+  if (exe === 'workbuddyai.exe') return 'ai';
+  if (exe === 'workbuddy.exe') return 'cn';
+  // On Mac both clients can be installed and signed independently. Never let the
+  // presence of the other account's auth file select the wrong billing host.
+  if (process.platform === 'darwin') {
+    if (process.execPath.includes('WorkBuddy AI.app/')) return 'ai';
+    if (process.execPath.includes('WorkBuddy.app/')) return 'cn';
+  }
+  const root = authRoot();
   for (const v of ['cn', 'ai']) {
     if (fs.existsSync(path.join(root, VARIANTS[v].authFile))) return v;
   }
@@ -143,8 +158,7 @@ function decryptField(key, keyId, wrap) {
 
 // --------------------------------------------------------------- 3. 读登录态
 function authFilePath(variant) {
-  const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-  return path.join(base, 'CodeBuddyExtension', 'Data', 'Public', 'auth', VARIANTS[variant].authFile);
+  return path.join(authRoot(), VARIANTS[variant].authFile);
 }
 
 function loadSession(variant) {
@@ -190,7 +204,9 @@ function post(host, urlPath, headers, bodyObj) {
             Accept: 'application/json',
             'Accept-Language': 'zh',
             'Content-Length': body.length,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'User-Agent': process.platform === 'darwin'
+            ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+            : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
           },
           headers
         ),

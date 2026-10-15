@@ -36,7 +36,7 @@ class NativeLifecycleTest(unittest.TestCase):
                 hwnd = current[0]
                 if not hwnd or not native.u.IsWindow(hwnd):
                     return None
-                return native.Host(hwnd, "test-only", native.bounds_for(hwnd), native.u.GetDpiForWindow(hwnd),
+                return native.Host(hwnd, "C:/test-only/WorkBuddy.exe", native.bounds_for(hwnd), native.u.GetDpiForWindow(hwnd),
                                    bool(native.u.IsIconic(hwnd)), False)
 
             meter = app.Meter(root)

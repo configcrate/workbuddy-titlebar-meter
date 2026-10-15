@@ -12,7 +12,7 @@ from tkinter import font as tkfont
 import winreg
 
 from meter_core import (INTERVALS, PALETTES, autostart_command, fmt_num, meter_color,
-                        meter_text, normalize_snapshot, sanitize_config, titlebar_layout)
+                        meter_text, normalize_snapshot, sanitize_config, titlebar_layout, variant_for_path)
 import window_anchor as native
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +23,12 @@ HELPER = os.path.join(APP_DIR, "wb_credits_helper.cjs")
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_NAME = "WorkBuddyCredits"
 BACKGROUND = "#1f1f1f"
+
+
+def state_path(variant):
+    if variant not in ("cn", "ai"):
+        raise ValueError("Unknown WorkBuddy variant")
+    return os.path.splitext(STATE_PATH)[0] + "_" + variant + ".json"
 
 
 def load_json(path, default=None):
@@ -94,7 +100,8 @@ class Meter:
         self.root = root
         root.withdraw()
         self.cfg = sanitize_config(load_json(CONFIG_PATH, {}))
-        self.data = normalize_snapshot(load_json(STATE_PATH))
+        # Legacy untagged cache cannot safely be assigned to either account.
+        self.data = None
         self.phase = "loading"
         self.error = ""
         self.finder = native.WindowFinder()
@@ -119,8 +126,6 @@ class Meter:
         self.press = None
         self._font_scale = None
         save_json(CONFIG_PATH, self.cfg)
-        if self.data:
-            save_json(STATE_PATH, self.data)
         root.after(50, self.tick)
 
     def ensure_overlay(self):
@@ -167,23 +172,29 @@ class Meter:
                 generation, result, error = self.results.get_nowait()
             except queue.Empty:
                 break
-            self.busy = False
             if generation == self.generation and self.host:
-                snapshot = normalize_snapshot(result)
+                self.busy = False
+                variant = variant_for_path(self.host.path)
+                snapshot = normalize_snapshot(result, expected_variant=variant)
                 if snapshot:
                     self.data, self.phase, self.error = snapshot, "ok", ""
-                    save_json(STATE_PATH, snapshot)
+                    save_json(state_path(variant), snapshot)
                 else:
                     self.phase = "error"
                     self.error = error or str((result or {}).get("error", "积分接口暂不可用"))[:160]
                     self.next_refresh = time.monotonic() + min(60, self.cfg["intervalMs"] / 1000)
         old_host = self.host.hwnd if self.host else 0
         host = self.finder.find(old_host)
-        if old_host != (host.hwnd if host else 0):
+        if (old_host, self.host.path if self.host else None) != (host.hwnd if host else 0, host.path if host else None):
             self.generation += 1
             self.cancel_helper()
+            self.busy = False
             self.next_refresh = 0
             self.hide_tooltip()
+            variant = variant_for_path(host.path) if host else None
+            self.data = normalize_snapshot(load_json(state_path(variant)), expected_variant=variant) if variant else None
+            self.phase, self.error = "loading", ""
+            self.last_draw = None
         self.host = host
         if not host:
             self.hide()
@@ -218,7 +229,7 @@ class Meter:
         self.busy = True
         self.phase = "refreshing" if self.data else "loading"
         self.next_refresh = time.monotonic() + self.cfg["intervalMs"] / 1000
-        generation, executable, variant = self.generation, self.host.path, self.cfg["variant"]
+        generation, executable, variant = self.generation, self.host.path, variant_for_path(self.host.path)
         threading.Thread(target=self.fetch, args=(generation, executable, variant), daemon=True).start()
 
     def fetch(self, generation, executable, variant):

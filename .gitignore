@@ -5,6 +5,7 @@ __pycache__/
 .meter.lock
 meter_config.json
 meter_state.json
+meter_state_*.json
 backup-before-titlebar/
 preview.png
 dist/

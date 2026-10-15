@@ -4,7 +4,7 @@ from ctypes import wintypes as W
 import os
 import time
 from dataclasses import dataclass
-from meter_core import is_main_candidate
+from meter_core import is_main_candidate, variant_for_path
 
 u = C.WinDLL("user32", use_last_error=True)
 k = C.WinDLL("kernel32", use_last_error=True)
@@ -135,7 +135,7 @@ class WindowFinder:
     def __init__(self):
         self.path_cache = {}
 
-    def find(self, preferred=0):
+    def find(self, preferred=0, variant=None):
         candidates = []
         now = time.monotonic()
 
@@ -159,6 +159,8 @@ class WindowFinder:
             else:
                 path = process_path(hwnd)
                 self.path_cache[pid.value] = (now, path)
+            if variant is not None and variant_for_path(path) != variant:
+                return True
             check_rect = (0, 0, 800, 600) if iconic and preferred == hwnd else rect
             if is_main_candidate(path, cls.value, check_rect, bool(u.GetWindow(hwnd, 4)),
                                  bool(getlong(hwnd, -20) & 0x80)):

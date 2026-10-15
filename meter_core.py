@@ -28,11 +28,15 @@ def titlebar_layout(bounds, dpi=96):
     return Placement(right - px(158) - width, top + px(2), width, px(28), scale)
 
 
+def variant_for_path(path):
+    basename = path.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return {"workbuddy.exe": "cn", "workbuddyai.exe": "ai"}.get(basename)
+
+
 def is_main_candidate(path, class_name, bounds, owned=False, tool_window=False):
     # A browser page mentioning WorkBuddy is not WorkBuddy. Pets/tool windows are not hosts.
     width, height = bounds[2] - bounds[0], bounds[3] - bounds[1]
-    basename = path.replace("\\", "/").rsplit("/", 1)[-1].lower()
-    return (basename == "workbuddy.exe" and class_name.startswith("Chrome_WidgetWin_")
+    return (variant_for_path(path) is not None and class_name.startswith("Chrome_WidgetWin_")
             and not owned and not tool_window and width >= 480 and height >= 240)
 
 
@@ -49,9 +53,12 @@ def sanitize_config(raw):
             "variant": variant if variant in ("auto", "cn", "ai") else "auto"}
 
 
-def normalize_snapshot(raw):
+def normalize_snapshot(raw, expected_variant=None):
     """Cache only display values, never account identifiers, nicknames or token metadata."""
     if not isinstance(raw, dict) or raw.get("ok") is not True:
+        return None
+    variant = raw.get("variant")
+    if expected_variant is not None and (expected_variant not in ("cn", "ai") or variant != expected_variant):
         return None
     try:
         remain, total, updated = (float(raw[key]) for key in ("remain", "total", "updatedAt"))
@@ -62,8 +69,11 @@ def normalize_snapshot(raw):
     if remain < 0 or total < 0 or updated <= 0:
         return None
     percent = min(100.0, max(0.0, remain / total * 100)) if total > 0 else None
-    return {"ok": True, "remain": remain, "total": total, "percent": percent,
+    data = {"ok": True, "remain": remain, "total": total, "percent": percent,
             "updatedAt": updated, "plan": str(raw.get("plan") or "")[:80]}
+    if variant in ("cn", "ai"):
+        data["variant"] = variant
+    return data
 
 
 def fmt_num(value):
