@@ -36,7 +36,8 @@ if ($env:WB_LINK_WRITE -eq '1') {
     result = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", command],
                             env=env, capture_output=True, timeout=20, creationflags=0x08000000)
     if result.returncode:
-        raise OSError("Could not configure the per-user Startup shortcut")
+        diagnostic = result.stderr.decode("utf-8", errors="replace").strip()[-1500:]
+        raise OSError("Could not configure the per-user Startup shortcut: " + diagnostic)
     return json.loads(result.stdout.decode("utf-8-sig"))
 
 
