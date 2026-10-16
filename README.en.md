@@ -52,6 +52,8 @@ The helper reads WorkBuddy's local session, obtains the local storage key throug
 
 No tokens are saved in config, cache or logs. No telemetry or data is sent to ConfigCrate. No DLL injection, app file changes or copies of WorkBuddy.exe. Network requests use the selected official billing host, www.workbuddy.cn or www.workbuddy.ai. Windows overwrites one config and two regional caches (`meter_state_cn.json`, `meter_state_ai.json`) instead of accumulating snapshots; legacy `meter_state.json` is ignored. Mac keeps snapshots in memory and uses separate per-user LaunchAgents for opt-in login startup.
 
+Windows login startup uses `ConfigCrate WorkBuddy Meter.lnk` in the current user's Startup folder, with explicit interpreter, arguments and working directory. Installation migrates this folder's old registry Run entry. Failed login launches retry every 10 seconds for up to two minutes; early errors overwrite one bounded `meter_error.log` rather than accumulating logs. Manual launches fail promptly instead of retrying.
+
 The native binding and billing API are unofficial integration points and may break after WorkBuddy updates.
 
 Windows client versions: WorkBuddy 5.8.2 China and WorkBuddy AI 5.7.6 international. Enterprise accounts and light titlebars are not supported. Mac screenshots and test notes were supplied by the user; the Mac package was not rebuilt or executed on this Windows machine. No Linux version.
@@ -59,12 +61,12 @@ Windows client versions: WorkBuddy 5.8.2 China and WorkBuddy AI 5.7.6 internatio
 ## Tests
 
 ```powershell
-python -m unittest test_meter test_native_lifecycle -v
+python -m unittest test_meter test_native_lifecycle test_startup -v
 node test_helper.cjs
 python meter.pyw --diagnose
 ```
 
-32 Python tests and 7 helper-routing assertions. The automated tests use no account credentials or billing calls; native lifecycle tests create only their own temporary windows. See [QA notes](docs/QA.md).
+39 Python tests and 7 helper-routing assertions, including temporary Unicode shortcuts, startup migration safety and bounded login retries. The automated tests use no account credentials or billing calls; native lifecycle tests create only their own temporary windows. See [QA notes](docs/QA.md).
 
 Independent third-party software, not affiliated with or endorsed by WorkBuddy. MIT License.
 

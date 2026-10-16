@@ -81,6 +81,13 @@ def request_stop():
         k.CloseHandle(handle)
 
 
+def release_instance():
+    global INSTANCE_HANDLE
+    if INSTANCE_HANDLE:
+        k.CloseHandle(INSTANCE_HANDLE)
+        INSTANCE_HANDLE = None
+
+
 class StopSignal:
     def __init__(self):
         self.handle = k.CreateEventW(None, True, False, STOP_EVENT)

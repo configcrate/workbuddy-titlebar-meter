@@ -14,10 +14,10 @@ jobs:
         with:
           python-version: '3.13'
       - name: Compile Python sources
-        run: python -m py_compile meter.pyw titlebar_meter.py meter_core.py window_anchor.py
+        run: python -m py_compile meter.pyw titlebar_meter.py meter_core.py window_anchor.py startup_link.py
       - name: Validate helper syntax
         run: node --check wb_credits_helper.cjs
       - name: Account-independent helper routing tests
         run: node test_helper.cjs
       - name: Unit and isolated native-window tests
-        run: python -m unittest test_meter test_native_lifecycle -v
+        run: python -m unittest test_meter test_native_lifecycle test_startup -v

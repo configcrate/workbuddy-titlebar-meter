@@ -12,7 +12,7 @@
 
 ## 下载与安装
 
-1. 在 [Releases](https://github.com/configcrate/workbuddy-titlebar-meter/releases/latest) 下载 `workbuddy-titlebar-meter-v0.2.0-windows-python.zip`。
+1. 在 [Releases](https://github.com/configcrate/workbuddy-titlebar-meter/releases/latest) 下载 `workbuddy-titlebar-meter-v0.2.1-windows-python.zip`。
 2. 解压到一个固定、当前用户可写的文件夹。
 3. 确保安装了 [Python 3.10+](https://www.python.org/downloads/windows/)（包含 Tcl/Tk），并已安装、登录 WorkBuddy。
 4. 双击 **Start-Meter.bat**，自动注册当前用户登录自启并开始运行，无需管理员权限。
@@ -71,7 +71,7 @@ Mac 默认在宿主窗口在屏时显示，两版可同时显示；右键可改�
 - Windows 配置覆盖 `meter_config.json`；国内／国际缓存分别覆盖 `meter_state_cn.json`、`meter_state_ai.json`，不会按刷新次数新增文件。旧 `meter_state.json` 不再读取，可自行删除。
 - 缓存只存积分、总额度、百分比、套餐及更新时间，不保存 uid、昵称或令牌。
 - 异常日志覆盖同一个有大小上限的文件。
-- Windows 当前用户自启项：`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WorkBuddyCredits`。Mac 使用各版本独立的当前用户 LaunchAgent；积分快照只留在内存。
+- Windows 当前用户“启动”文件夹中的 `ConfigCrate WorkBuddy Meter.lnk` 指定解释器、脚本及工作目录；安装时迁移本目录对应的旧 `WorkBuddyCredits` 注册表项。登录启动失败时最多每 10 秒重试一次、共 2 分钟，错误覆盖同一个 `meter_error.log`，不累积日志。Mac 使用各版本独立的当前用户 LaunchAgent；积分快照只留在内存。
 
 此方式依赖非公开客户端绑定和计费接口，WorkBuddy 更新可能导致失效。欢迎阅读源代码后再决定是否使用。
 
@@ -85,12 +85,12 @@ Mac 默认在宿主窗口在屏时显示，两版可同时显示；右键可改�
 ## 开发与验证
 
 ```powershell
-python -m unittest test_meter test_native_lifecycle -v
+python -m unittest test_meter test_native_lifecycle test_startup -v
 node test_helper.cjs
 python meter.pyw --diagnose
 ```
 
-32 项 Python 测试与 7 项助手路由断言覆盖布局、数据校验、区域隔离、迟到响应、隐私缓存、生命周期和独立原生测试窗口。自动测试不使用你的登录态、不调用计费接口，不关闭正在工作的 WorkBuddy。[验证记录](docs/QA.md) · [Mac 测试交接](docs/MAC_HANDOFF.md)
+39 项 Python 测试与 7 项助手路由断言覆盖布局、数据校验、区域隔离、迟到响应、隐私缓存、生命周期、自启快捷方式和启动重试。自动测试不使用你的登录态、不调用计费接口，不关闭正在工作的 WorkBuddy。[验证记录](docs/QA.md) · [Mac 测试交接](docs/MAC_HANDOFF.md)
 
 独立第三方工具，与 WorkBuddy 官方无关，未获官方授权。MIT License。
 

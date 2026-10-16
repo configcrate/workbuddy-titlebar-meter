@@ -10,6 +10,7 @@ import time
 import tkinter as tk
 from tkinter import font as tkfont
 import winreg
+import startup_link
 
 from meter_core import (INTERVALS, PALETTES, autostart_command, fmt_num, meter_color,
                         meter_text, normalize_snapshot, sanitize_config, titlebar_layout, variant_for_path)
@@ -74,24 +75,30 @@ def remove_legacy_startup():
 
 
 def install_autostart():
-    command = autostart_command(pythonw_exe(), SCRIPT)
-    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-        winreg.SetValueEx(key, RUN_NAME, 0, winreg.REG_SZ, command)
+    startup_link.install(pythonw_exe(), SCRIPT)
+    remove_run_entry()
     remove_legacy_startup()
 
 
 def is_autostart():
+    return startup_link.matches(startup_link.details(), pythonw_exe(), SCRIPT)
+
+
+def remove_run_entry():
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            return winreg.QueryValueEx(key, RUN_NAME)[0] == autostart_command(pythonw_exe(), SCRIPT)
+            command = winreg.QueryValueEx(key, RUN_NAME)[0]
+        if command != autostart_command(pythonw_exe(), SCRIPT):
+            return
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, RUN_NAME)
     except OSError:
-        return False
+        pass
 
 
 def uninstall_autostart():
-    if is_autostart():
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            winreg.DeleteValue(key, RUN_NAME)
+    startup_link.remove(pythonw_exe(), SCRIPT)
+    remove_run_entry()
     remove_legacy_startup()
 
 
@@ -464,6 +471,7 @@ def run():
     parser.add_argument("--uninstall", action="store_true")
     parser.add_argument("--stop", action="store_true")
     parser.add_argument("--diagnose", action="store_true")
+    parser.add_argument("--autostart", action="store_true")
     args = parser.parse_args()
     native.dpi_aware()
     if args.uninstall or args.stop:
@@ -482,10 +490,19 @@ def run():
         install_autostart()
     if not native.single_instance():
         return
-    root = tk.Tk()
-    root.withdraw()
-    Meter(root)
-    root.mainloop()
+    root = None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        Meter(root)
+        root.mainloop()
+    finally:
+        if root:
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
+        native.release_instance()
 
 
 def main():
