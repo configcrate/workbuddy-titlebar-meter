@@ -1,7 +1,8 @@
 """Per-user Startup shortcut; no elevation, scheduled task or client changes."""
-import json
+import ctypes as C
 import os
 import subprocess
+import uuid
 
 DESCRIPTION = "ConfigCrate WorkBuddy Titlebar Meter"
 
@@ -12,33 +13,64 @@ def shortcut_path():
 
 
 def _shell_link(path, target="", arguments="", directory="", write=False):
-    # Paths are passed as environment data, never interpolated into PowerShell code.
-    command = r'''
-$ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding
-$shell = New-Object -ComObject WScript.Shell
-$link = $shell.CreateShortcut($env:WB_LINK_PATH)
-if ($env:WB_LINK_WRITE -eq '1') {
-    $link.TargetPath = $env:WB_LINK_TARGET
-    $link.Arguments = $env:WB_LINK_ARGS
-    $link.WorkingDirectory = $env:WB_LINK_DIRECTORY
-    $link.Description = 'ConfigCrate WorkBuddy Titlebar Meter'
-    $link.WindowStyle = 7
-    $link.Save()
-}
-@{target=$link.TargetPath; arguments=$link.Arguments; directory=$link.WorkingDirectory;
-  description=$link.Description} | ConvertTo-Json -Compress
-'''
-    powershell = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
-                             "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-    env = dict(os.environ, WB_LINK_PATH=path, WB_LINK_TARGET=target,
-               WB_LINK_ARGS=arguments, WB_LINK_DIRECTORY=directory, WB_LINK_WRITE="1" if write else "0")
-    result = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", command],
-                            env=env, capture_output=True, timeout=20, creationflags=0x08000000)
-    if result.returncode:
-        diagnostic = result.stderr.decode("utf-8", errors="replace").strip()[-1500:]
-        raise OSError("Could not configure the per-user Startup shortcut: " + diagnostic)
-    return json.loads(result.stdout.decode("utf-8-sig"))
+    # IShellLinkW + IPersistFile keep paths Unicode even on English Windows.
+    # WScript.Shell's Save can corrupt non-ANSI shortcut paths on those systems.
+    class GUID(C.Structure):
+        _fields_ = [("data1", C.c_uint32), ("data2", C.c_uint16),
+                    ("data3", C.c_uint16), ("data4", C.c_ubyte * 8)]
+
+    guid = lambda value: GUID.from_buffer_copy(uuid.UUID(value).bytes_le)
+    clsid = guid("00021401-0000-0000-c000-000000000046")
+    iid = guid("000214f9-0000-0000-c000-000000000046")
+    persist_iid = guid("0000010b-0000-0000-c000-000000000046")
+    def check(hr):
+        if hr < 0:
+            raise OSError(f"Startup shortcut operation failed (HRESULT 0x{hr & 0xffffffff:08x})")
+
+    def call(obj, slot, types, *values):
+        table = C.cast(obj, C.POINTER(C.POINTER(C.c_void_p))).contents
+        return C.WINFUNCTYPE(C.c_long, C.c_void_p, *types)(table[slot])(obj, *values)
+
+    # WinDLL avoids OleDLL automatically raising before we can balance COM state.
+    ole = C.WinDLL("ole32")
+    ole.CoInitializeEx.argtypes = [C.c_void_p, C.c_uint32]
+    ole.CoInitializeEx.restype = C.c_long
+    ole.CoCreateInstance.argtypes = [C.POINTER(GUID), C.c_void_p, C.c_uint32,
+                                     C.POINTER(GUID), C.POINTER(C.c_void_p)]
+    ole.CoCreateInstance.restype = C.c_long
+    ole.CoUninitialize.argtypes = []
+    ole.CoUninitialize.restype = None
+    initialized = ole.CoInitializeEx(None, 2)
+    if initialized != -2147417850:  # RPC_E_CHANGED_MODE: reuse caller's apartment.
+        check(initialized)
+    link, persist = C.c_void_p(), C.c_void_p()
+    try:
+        check(ole.CoCreateInstance(C.byref(clsid), None, 1, C.byref(iid), C.byref(link)))
+        check(call(link, 0, [C.POINTER(GUID), C.POINTER(C.c_void_p)], C.byref(persist_iid), C.byref(persist)))
+        if write:
+            for slot, value in ((20, target), (11, arguments), (9, directory), (7, DESCRIPTION)):
+                check(call(link, slot, [C.c_wchar_p], value))
+            check(call(link, 15, [C.c_int], 7))
+            check(call(persist, 6, [C.c_wchar_p, C.c_int], path, True))
+        else:
+            check(call(persist, 5, [C.c_wchar_p, C.c_uint32], path, 0))
+        info = {}
+        for key, slot in (("target", 3), ("arguments", 10), ("directory", 8), ("description", 6)):
+            buffer = C.create_unicode_buffer(32768)
+            types, values = [C.c_wchar_p, C.c_int], [buffer, len(buffer)]
+            if slot == 3:
+                types += [C.c_void_p, C.c_uint32]
+                values += [None, 0]
+            check(call(link, slot, types, *values))
+            info[key] = buffer.value
+        return info
+    finally:
+        if persist:
+            call(persist, 2, [])
+        if link:
+            call(link, 2, [])
+        if initialized >= 0:
+            ole.CoUninitialize()
 
 
 def details():

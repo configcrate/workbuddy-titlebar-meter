@@ -8,6 +8,7 @@
 - 本地 39 项 Python 测试通过；真实创建／读取／删除临时中文及空格路径快捷方式，不触碰真实 Startup 目录。助手 7 项路由断言通过。
 - 实际安装到用户原目录，Windows Win32_StartupCommand 已列出新 Startup 入口。使用该快捷方式从 Windows System32 工作目录、精简 PATH 启动，后台进程正常运行，原颜色和刷新间隔保留。
 - 本轮未主动重启或注销用户电脑。用户随后反馈“关闭重新开会显示”，并授权发布；该反馈不扩大为完整系统重启验证。实际 Windows 登录及开机仍欢迎继续反馈。
+- 发布前 GitHub 英文 Windows 测试机发现 WScript.Shell 保存中文路径快捷方式失败；改为原生 Unicode IShellLinkW / IPersistFile，不依赖 PowerShell 或 WScript 的路径编码。相同中文路径测试保留，不跳过该兼容性验证。
 
 ## v0.2.0 — 2026-10-15
 
